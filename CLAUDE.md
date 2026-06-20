@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Slidetty is a TUI (Terminal User Interface) slideshow application built in Go using the Bubble Tea framework. It renders markdown slides with beautiful styling via Glamour and provides an intuitive presentation interface.
+Janketty is a TUI (Terminal User Interface) slideshow application built in Go using the Bubble Tea framework. It renders markdown slides with beautiful styling via Glamour and provides an intuitive presentation interface.
 
 ## Architecture
 
@@ -24,12 +24,12 @@ Slidetty is a TUI (Terminal User Interface) slideshow application built in Go us
 
 ### Build
 ```bash
-go build -o slidetty main.go
+go build -o janketty main.go
 ```
 
 ### Run
 ```bash
-./slidetty
+./janketty
 ```
 
 ### Install Dependencies
@@ -39,7 +39,7 @@ go mod download
 
 ### Clean Build
 ```bash
-rm -f slidetty && go build -o slidetty main.go
+rm -f janketty && go build -o janketty main.go
 ```
 
 ## Slide Management

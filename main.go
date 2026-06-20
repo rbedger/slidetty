@@ -998,7 +998,7 @@ func (m model) View() string {
 			emoji := getRelevantEmoji(slideTitle)
 			headerText += emoji + " " + strings.ToUpper(slideTitle)
 		} else {
-			headerText += "SLIDETTY"
+			headerText += "JANKETTY"
 		}
 		headerText += " ⚡"
 
@@ -1056,7 +1056,7 @@ func (m model) View() string {
 
 	titleText := m.title
 	if titleText == "" {
-		titleText = "Slidetty"
+		titleText = "Janketty"
 	}
 	titleText = "🏷️ " + titleText
 
@@ -1182,7 +1182,7 @@ func initProject() error {
 	}
 
 	// Create example slides
-	slide1 := `# Welcome to Slidetty
+	slide1 := `# Welcome to Janketty
 
 Welcome to your new presentation!
 
@@ -1196,7 +1196,7 @@ This is your first slide. You can edit this file and add more slides.
 
 	slide2 := `# Features
 
-Slidetty supports many great features:
+Janketty supports many great features:
 
 :reveal:
 - **Markdown rendering** with beautiful syntax highlighting
@@ -1209,7 +1209,7 @@ Try pressing 'j' and 'k' to reveal items progressively!`
 
 	slide3 := `# Getting Started
 
-Here's how to work with Slidetty:
+Here's how to work with Janketty:
 
 :reveal:
 1. **Create slides** - Add numbered markdown files (01-slide.md, 02-slide.md, etc.)
@@ -1246,7 +1246,7 @@ Press 'd' to copy the first command above!`
 	fmt.Println("  ├── 01-welcome.md")
 	fmt.Println("  ├── 02-features.md")
 	fmt.Println("  └── 03-getting-started.md")
-	fmt.Println("\nRun 'slidetty' to start your presentation!")
+	fmt.Println("\nRun 'janketty' to start your presentation!")
 
 	return nil
 }
