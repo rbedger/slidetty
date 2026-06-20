@@ -518,9 +518,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentSlide = len(m.slides) - 1
 		}
 		percentage := float64(m.currentSlide+1) / float64(len(m.slides))
-		cmd := m.progress.SetPercent(percentage)
+		m.progress.SetPercent(percentage)
 
-		return m, cmd
+		return m, nil
 
 	case slideReloadedMsg:
 		if msg.slideIndex >= 0 && msg.slideIndex < len(m.slides) {
@@ -614,11 +614,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.notification = fmt.Sprintf("Copy error: %v", err)
 					} else {
 						// Truncate command text to fit notification bar
-						displayCmd := commands[0]
-						maxWidth := m.width - 12 // Reserve space for "Copied: " text and padding
-						if len(displayCmd) > maxWidth {
-							displayCmd = displayCmd[:maxWidth-3] + "..."
-						}
+						displayCmd := safeTruncate(commands[0], m.width-12)
 						m.notification = fmt.Sprintf("Copied: %s", displayCmd)
 					}
 					m.notificationTimer = 3
@@ -634,8 +630,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentSlide < len(m.slides)-1 {
 				m.currentSlide++
 				percentage := float64(m.currentSlide+1) / float64(len(m.slides))
-				cmd := m.progress.SetPercent(percentage)
-				return m, cmd
+				m.progress.SetPercent(percentage)
 			}
 			return m, nil
 
@@ -646,8 +641,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentSlide > 0 {
 				m.currentSlide--
 				percentage := float64(m.currentSlide+1) / float64(len(m.slides))
-				cmd := m.progress.SetPercent(percentage)
-				return m, cmd
+				m.progress.SetPercent(percentage)
 			}
 			return m, nil
 
@@ -655,8 +649,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentSlide < len(m.slides)-1 {
 				m.currentSlide++
 				percentage := float64(m.currentSlide+1) / float64(len(m.slides))
-				cmd := m.progress.SetPercent(percentage)
-				return m, cmd
+				m.progress.SetPercent(percentage)
 			}
 			return m, nil
 
@@ -664,12 +657,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentSlide > 0 {
 				m.currentSlide--
 				percentage := float64(m.currentSlide+1) / float64(len(m.slides))
-				cmd := m.progress.SetPercent(percentage)
-				return m, cmd
+				m.progress.SetPercent(percentage)
 			}
 			return m, nil
 
-		case "f", "g", "t", "u", "i", "o", "z":
+		case "f", "g", "t", "y", "u", "i", "o", "p", "z":
 			// Handle command hotkeys (only if current slide has commands)
 			if m.currentSlide < len(m.commandBlocks) && len(m.commandBlocks[m.currentSlide]) > 0 {
 				commands := m.commandBlocks[m.currentSlide]
@@ -684,11 +676,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.notification = fmt.Sprintf("Copy error: %v", err)
 					} else {
 						// Truncate command text to fit notification bar
-						displayCmd := commands[cmdNum]
-						maxWidth := m.width - 12 // Reserve space for "Copied: " text and padding
-						if len(displayCmd) > maxWidth {
-							displayCmd = displayCmd[:maxWidth-3] + "..."
-						}
+						displayCmd := safeTruncate(commands[cmdNum], m.width-12)
 						m.notification = fmt.Sprintf("Copied: %s", displayCmd)
 					}
 					m.notificationTimer = 3 // Show for 3 seconds
@@ -701,10 +689,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case progress.FrameMsg:
-		progressModel, cmd := m.progress.Update(msg)
-		m.progress = progressModel.(progress.Model)
-		return m, cmd
+	// progress.FrameMsg is ignored because animations are disabled to prevent event loop freezes
 
 	case tickMsg:
 		if m.notificationTimer > 0 {
@@ -844,6 +829,20 @@ func ellipsisLine(line string) string {
 	return indent + "..."
 }
 
+func safeTruncate(text string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= maxWidth {
+		return text
+	}
+	if maxWidth <= 3 {
+		return string(runes[:maxWidth])
+	}
+	return string(runes[:maxWidth-3]) + "..."
+}
+
 func doTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg{}
@@ -966,11 +965,7 @@ func renderCommandHotkeys(commands []string, width int) []string {
 			break
 		}
 		// Truncate long commands to fit width
-		displayCmd := cmd
-		maxCmdWidth := width - 10 // Reserve space for key and padding
-		if len(displayCmd) > maxCmdWidth {
-			displayCmd = displayCmd[:maxCmdWidth-3] + "..."
-		}
+		displayCmd := safeTruncate(cmd, width-10)
 
 		// Style the key with darker background (Dracula Green)
 		keyStyle := lipgloss.NewStyle().
@@ -1085,6 +1080,9 @@ func (m model) View() string {
 	if useBorder {
 		innerHeight -= 4 // borders (2) + header (1) + divider (1)
 	}
+	if innerHeight < 0 {
+		innerHeight = 0
+	}
 
 	// Split rendered content into lines and fit to available inner height
 	lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
@@ -1159,8 +1157,8 @@ func (m model) View() string {
 		framedContent = plainStyle.Render(content)
 	}
 
-	// Get the animated progress bar
-	progressBar := m.progress.View()
+	// Get the static progress bar (animations are disabled to prevent freezing)
+	progressBar := m.progress.ViewAs(m.progress.Percent())
 
 	// Create three-section status line with chevrons
 	slideInfo := fmt.Sprintf("📖 Slide %d/%d", m.currentSlide+1, len(m.slides))
@@ -1216,19 +1214,20 @@ func (m model) View() string {
 	centerWidth := sectionWidth
 	rightWidth := totalWidth - leftWidth - centerWidth - 2*chevronWidth
 
-	// Truncate text safely using rune slices to avoid cutting multi-byte UTF-8 emojis
-	slideInfoRunes := []rune(slideInfo)
-	if len(slideInfoRunes) > leftWidth-2 {
-		slideInfo = string(slideInfoRunes[:leftWidth-5]) + "..."
+	if leftWidth < 0 {
+		leftWidth = 0
 	}
-	authorTextRunes := []rune(authorText)
-	if len(authorTextRunes) > centerWidth-2 {
-		authorText = string(authorTextRunes[:centerWidth-5]) + "..."
+	if centerWidth < 0 {
+		centerWidth = 0
 	}
-	titleTextRunes := []rune(titleText)
-	if len(titleTextRunes) > rightWidth-2 {
-		titleText = string(titleTextRunes[:rightWidth-5]) + "..."
+	if rightWidth < 0 {
+		rightWidth = 0
 	}
+
+	// Truncate text safely to fit the padded sections
+	slideInfo = safeTruncate(slideInfo, leftWidth-2)
+	authorText = safeTruncate(authorText, centerWidth-2)
+	titleText = safeTruncate(titleText, rightWidth-2)
 
 	// Create sections with proper width and alignment
 	leftSection := leftStyle.Width(leftWidth).Render(slideInfo)

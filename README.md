@@ -60,3 +60,4 @@ slides/
 - [github.com/charmbracelet/bubbletea](https://github.com/charmbracelet/bubbletea) - TUI framework
 - [github.com/charmbracelet/glamour](https://github.com/charmbracelet/glamour) - Markdown renderer
 - [github.com/charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss) - Style definitions
+Modified slide content via test
