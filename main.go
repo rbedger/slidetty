@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -30,9 +29,6 @@ type model struct {
 	err               error
 	revealConfigs     []revealConfig
 	revealProgress    map[int]int
-	showEditor        bool
-	editor            textarea.Model
-	editorPath        string
 	commandBlocks     [][]string // commands for each slide
 	notification      string
 	notificationTimer int
@@ -48,6 +44,10 @@ type slideReloadedMsg struct {
 	config       revealConfig
 	path         string
 	commandBlock []string
+}
+
+type editorFinishedMsg struct {
+	err error
 }
 
 type revealConfig struct {
@@ -392,88 +392,6 @@ type slidesLoadedMsg struct {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.showEditor {
-		switch msg := msg.(type) {
-		case tea.WindowSizeMsg:
-			m.width = msg.Width
-			m.height = msg.Height
-			if m.renderer != nil {
-				theme := loadTheme()
-				var r *glamour.TermRenderer
-				wrapWidth := getWordWrapWidth(msg.Width, msg.Height)
-				if theme == "auto" {
-					r, _ = glamour.NewTermRenderer(
-						glamour.WithStylesFromJSONBytes(defaultFlashyTheme),
-						glamour.WithWordWrap(wrapWidth),
-					)
-				} else {
-					r, _ = glamour.NewTermRenderer(
-						glamour.WithStylePath(theme),
-						glamour.WithWordWrap(wrapWidth),
-					)
-				}
-				m.renderer = r
-			}
-			m.progress.Width = msg.Width - 4
-			m.editor.SetWidth(msg.Width)
-			m.editor.SetHeight(msg.Height - 3)
-			return m, nil
-
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyEsc:
-				m.editor.Blur()
-				m.showEditor = false
-				m.editorPath = ""
-				return m, nil
-			case tea.KeyCtrlS:
-				content := m.editor.Value()
-				if m.editorPath != "" {
-					if err := os.WriteFile(m.editorPath, []byte(content), 0o644); err != nil {
-						m.err = err
-						return m, nil
-					}
-				}
-				if m.currentSlide >= 0 && m.currentSlide < len(m.slides) {
-					m.slides[m.currentSlide] = content
-					if len(m.revealConfigs) != len(m.slides) {
-						newConfigs := make([]revealConfig, len(m.slides))
-						copy(newConfigs, m.revealConfigs)
-						m.revealConfigs = newConfigs
-					}
-					cfg := analyzeReveal(content)
-					m.revealConfigs[m.currentSlide] = cfg
-					if cfg.totalItems() > 0 {
-						if m.revealProgress == nil {
-							m.revealProgress = make(map[int]int)
-						}
-						m.revealProgress[m.currentSlide] = clampRevealProgress(m.revealProgress[m.currentSlide], cfg.totalItems())
-					} else {
-						delete(m.revealProgress, m.currentSlide)
-					}
-				}
-				if m.currentSlide >= 0 && m.currentSlide < len(m.slidePaths) && m.editorPath != "" {
-					m.slidePaths[m.currentSlide] = m.editorPath
-				}
-				m.editor.Blur()
-				m.showEditor = false
-				m.editorPath = ""
-				m.err = nil
-				return m, reloadSlide(m.currentSlide)
-			}
-			var cmd tea.Cmd
-			m.editor, cmd = m.editor.Update(msg)
-			return m, cmd
-		case errMsg:
-			m.err = msg
-			return m, nil
-		default:
-			var cmd tea.Cmd
-			m.editor, cmd = m.editor.Update(msg)
-			return m, cmd
-		}
-	}
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -568,6 +486,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case editorFinishedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		return m, reloadSlide(m.currentSlide)
+
 	case errMsg:
 		m.err = msg
 		return m, nil
@@ -584,20 +509,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.slides) == 0 || m.currentSlide < 0 || m.currentSlide >= len(m.slides) {
 				return m, nil
 			}
-			editor := textarea.New()
-			editor.SetValue(m.slides[m.currentSlide])
-			editor.Placeholder = "Edit slide markdown..."
-			editor.Focus()
-			editor.SetWidth(m.width)
-			editor.SetHeight(m.height - 3)
-			m.editor = editor
-			if m.currentSlide >= 0 && m.currentSlide < len(m.slidePaths) {
-				m.editorPath = m.slidePaths[m.currentSlide]
-			} else {
-				m.editorPath = ""
+			filePath := m.slidePaths[m.currentSlide]
+			if filePath == "" {
+				return m, nil
 			}
-			m.showEditor = true
-			return m, textarea.Blink
+			editor := os.Getenv("EDITOR")
+			if editor == "" {
+				editor = "vim"
+			}
+			c := exec.Command(editor, filePath)
+			return m, tea.ExecProcess(c, func(err error) tea.Msg {
+				return editorFinishedMsg{err: err}
+			})
 
 		case "r":
 			if len(m.slides) > 0 {
@@ -992,38 +915,6 @@ func renderCommandHotkeys(commands []string, width int) []string {
 }
 
 func (m model) View() string {
-	if m.showEditor {
-		editorView := m.editor.View()
-
-		pathLabel := m.editorPath
-		if pathLabel == "" {
-			pathLabel = "unsaved slide"
-		} else {
-			pathLabel = filepath.Base(pathLabel)
-		}
-
-		helpLines := []string{pathLabel, "esc to close - ctrl+s to save & exit"}
-		if m.err != nil {
-			helpLines = append(helpLines, fmt.Sprintf("error: %v", m.err))
-		}
-
-		helpText := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#94A3B8")).
-			Background(lipgloss.Color("#000000")).
-			Width(m.width).
-			Align(lipgloss.Left).
-			Render(strings.Join(helpLines, " | "))
-
-		statusBar := lipgloss.NewStyle().
-			Background(lipgloss.Color("#1E3A8A")).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Width(m.width).
-			Padding(0, 1).
-			Render("EDIT MODE")
-
-		return lipgloss.JoinVertical(lipgloss.Left, statusBar, editorView, helpText)
-	}
-
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n\nPress 'q' to quit.", m.err)
 	}
